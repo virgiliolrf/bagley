@@ -139,3 +139,51 @@ def test_classify_priority_url_over_ipv4():
     # A URL that contains an IP should be classified as URL
     r = classify("https://10.10.10.10/shell")
     assert r.type == SelectionType.URL
+
+
+from bagley.tui.interactions.inspector_actions import actions_for, InspectorAction
+from bagley.tui.interactions.selection import classify
+
+
+def test_actions_for_ipv4_contains_nmap():
+    result = classify("10.10.10.10")
+    actions = actions_for(result)
+    labels = [a.label for a in actions]
+    assert any("nmap" in l.lower() for l in labels)
+
+
+def test_actions_for_cve_contains_searchsploit():
+    result = classify("CVE-2021-44228")
+    actions = actions_for(result)
+    labels = [a.label for a in actions]
+    assert any("searchsploit" in l.lower() or "exploit" in l.lower() for l in labels)
+
+
+def test_actions_for_md5_contains_crack():
+    result = classify("d41d8cd98f00b204e9800998ecf8427e")
+    actions = actions_for(result)
+    labels = [a.label for a in actions]
+    assert any("crack" in l.lower() or "hashcat" in l.lower() for l in labels)
+
+
+def test_actions_for_url_contains_dirb():
+    result = classify("http://example.com")
+    actions = actions_for(result)
+    labels = [a.label for a in actions]
+    assert any("gobuster" in l.lower() or "dirb" in l.lower() or "ffuf" in l.lower() for l in labels)
+
+
+def test_actions_for_unknown_has_send_to_chat():
+    result = classify("some random text")
+    actions = actions_for(result)
+    labels = [a.label for a in actions]
+    assert any("chat" in l.lower() or "send" in l.lower() for l in labels)
+
+
+def test_actions_each_have_command_string():
+    result = classify("10.10.10.10")
+    actions = actions_for(result)
+    for a in actions:
+        assert isinstance(a.label, str)
+        assert isinstance(a.command, str)
+        assert len(a.label) > 0
