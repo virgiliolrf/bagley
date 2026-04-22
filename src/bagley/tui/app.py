@@ -261,7 +261,66 @@ class BagleyApp(App):
             pass
 
     def action_run_playbook(self, name: str) -> None:
-        pass   # Phase 4
+        """Look up a playbook by name in .playbooks/ and load it via plan mode."""
+        from bagley.tui.playbooks.loader import scan_playbooks
+        from bagley.tui.playbooks.runner import PlaybookRunner
+
+        playbooks = scan_playbooks()
+        # Match by name (case-insensitive) or by filename stem (without .yml)
+        target_pb = None
+        for pb in playbooks:
+            if pb.name.lower() == name.lower() or (
+                pb.source is not None and pb.source.stem.lower() == name.lower()
+            ):
+                target_pb = pb
+                break
+        if target_pb is None:
+            try:
+                self.notify(f"Playbook '{name}' not found", severity="warning")
+            except Exception:
+                pass
+            return
+        tab = self.state.tabs[self.state.active_tab] if self.state.tabs else None
+        target_val = tab.id if tab else "target"
+        runner = PlaybookRunner(playbook=target_pb, variables={"target": target_val})
+        plan = runner.to_plan(tab_id=target_val)
+        try:
+            from bagley.tui.panels.chat import ChatPanel
+            chat = self.query_one(ChatPanel)
+            chat.load_plan(plan)
+        except Exception:
+            try:
+                self.notify("Could not load plan into chat panel", severity="error")
+            except Exception:
+                pass
+
+    def action_run_playbook_picker(self) -> None:
+        """Scan .playbooks/ and load the first one through plan mode (Phase 4 stub)."""
+        from bagley.tui.playbooks.loader import scan_playbooks
+        from bagley.tui.playbooks.runner import PlaybookRunner
+
+        playbooks = scan_playbooks()
+        if not playbooks:
+            try:
+                self.notify("No playbooks found in .playbooks/", severity="warning")
+            except Exception:
+                pass
+            return
+        # Full selection screen is Phase 5 UI polish; here we just load first.
+        pb = playbooks[0]
+        tab = self.state.tabs[self.state.active_tab] if self.state.tabs else None
+        target_val = tab.id if tab else "target"
+        runner = PlaybookRunner(playbook=pb, variables={"target": target_val})
+        plan = runner.to_plan(tab_id=target_val)
+        try:
+            from bagley.tui.panels.chat import ChatPanel
+            chat = self.query_one(ChatPanel)
+            chat.load_plan(plan)
+        except Exception:
+            try:
+                self.notify("Could not load plan into chat panel", severity="error")
+            except Exception:
+                pass
 
     def action_open_alerts(self) -> None:
         self.action_open_alerts_log()

@@ -48,6 +48,7 @@ ACTIONS: list[tuple[str, str]] = [
     ("close inspector",                 "close_inspector"),
 
     # ── Common playbook stubs ──────────────────────────────────────────────────
+    ("run playbook …",                  "run_playbook_picker"),
     ("playbook: initial recon",         "run_playbook('initial_recon')"),
     ("playbook: web enum",              "run_playbook('web_enum')"),
     ("playbook: smb enum",              "run_playbook('smb_enum')"),
