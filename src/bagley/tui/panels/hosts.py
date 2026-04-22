@@ -25,21 +25,26 @@ class HostsPanel(Vertical):
         self.can_focus = True
 
     def compose(self):
+        from bagley.tui.widgets.rings import SeverityBars
         yield Static("", id="hosts-section")
         yield Static("", id="ports-section")
-        yield Static("", id="findings-section")
+        yield Static("[b orange3]◆ FINDINGS[/]", id="findings-header")
+        yield SeverityBars()
 
     def on_mount(self) -> None:
         self.refresh_content()
 
     def refresh_content(self) -> None:
         from bagley.memory.store import MemoryStore
+        from bagley.tui.widgets.rings import SeverityBars
         try:
             store = MemoryStore(_memory_path())
         except Exception:
-            self.query_one("#hosts-section").update("[b orange3]◆ HOSTS[/]\n[dim](memory unavailable)[/]")
-            self.query_one("#ports-section").update("[b orange3]◆ PORTS[/]\n[dim]—[/]")
-            self.query_one("#findings-section").update("[b orange3]◆ FINDINGS[/]\n[dim]—[/]")
+            try:
+                self.query_one("#hosts-section").update("[b orange3]◆ HOSTS[/]\n[dim](memory unavailable)[/]")
+                self.query_one("#ports-section").update("[b orange3]◆ PORTS[/]\n[dim]—[/]")
+            except Exception:
+                pass
             return
         try:
             hosts = store.list_hosts() if hasattr(store, "list_hosts") else []
@@ -52,15 +57,14 @@ class HostsPanel(Vertical):
             if len(host_lines) == 1:
                 host_lines.append("[dim](none)[/]")
 
-            active = self._state.tabs[self._state.active_tab]
-            target_ip = active.id if active.kind == "target" else None
+            active = self._state.tabs[self._state.active_tab] if self._state.tabs else None
+            target_ip = active.id if (active and active.kind == "target") else None
             # If not on a target tab but hosts exist, show ports/findings for the first host
             if target_ip is None and hosts:
                 first = hosts[0]
                 target_ip = first.get("ip") if isinstance(first, dict) else first["ip"]
 
             ports = []
-            findings = []
             if target_ip and hasattr(store, "host_detail"):
                 detail = store.host_detail(target_ip) or {}
                 for p in detail.get("ports", []):
@@ -68,18 +72,29 @@ class HostsPanel(Vertical):
                     proto_v = p.get("proto", "tcp") if isinstance(p, dict) else p["proto"]
                     svc = p.get("service", "?") if isinstance(p, dict) else p["service"]
                     ports.append(f"{port_v}/{proto_v} [green]{svc}[/]")
-                for f in detail.get("findings", []):
-                    sev = f.get("severity", "?") if isinstance(f, dict) else f["severity"]
-                    summary = f.get("summary", "") if isinstance(f, dict) else f["summary"]
-                    cve = f.get("cve", "") if isinstance(f, dict) else (f["cve"] or "")
-                    findings.append(f"[red]▸[/] {cve or summary} [dim]({sev})[/]")
 
             port_lines = ["[b orange3]◆ PORTS[/]"] + (ports or ["[dim](none)[/]"])
-            finding_lines = ["[b orange3]◆ FINDINGS[/]"] + (findings or ["[dim](none)[/]"])
 
-            self.query_one("#hosts-section").update("\n".join(host_lines))
-            self.query_one("#ports-section").update("\n".join(port_lines))
-            self.query_one("#findings-section").update("\n".join(finding_lines))
+            try:
+                self.query_one("#hosts-section").update("\n".join(host_lines))
+            except Exception:
+                pass
+            try:
+                self.query_one("#ports-section").update("\n".join(port_lines))
+            except Exception:
+                pass
+
+            # Aggregate severity counts across all findings
+            try:
+                counts = {
+                    "critical": len(store.list_findings_by_severity("critical")),
+                    "high":     len(store.list_findings_by_severity("high")),
+                    "medium":   len(store.list_findings_by_severity("medium")),
+                    "low":      len(store.list_findings_by_severity("low")),
+                }
+                self.query_one(SeverityBars).refresh_data(counts)
+            except Exception:
+                pass
         finally:
             try:
                 store.close()
