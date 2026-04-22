@@ -80,6 +80,22 @@ class BagleyApp(App):
                 pass
             raise
 
+    def on_mount(self) -> None:
+        """Start background services after the DOM is ready."""
+        from bagley.tui.services.nudges import NudgeEngine
+        # MemoryStore is optional — if no engagement DB exists yet, use a stub path
+        try:
+            from bagley.memory.store import MemoryStore
+            from pathlib import Path
+            db_path = Path(".bagley") / "memory.db"
+            store = MemoryStore(db_path)
+        except Exception:
+            store = None  # type: ignore[assignment]
+
+        if store is not None:
+            self._nudge_engine = NudgeEngine(state=self.state, store=store)
+            self.set_interval(30, self._nudge_engine.tick)
+
     def compose(self) -> ComposeResult:
         from bagley.tui.widgets.header import Header
         from bagley.tui.widgets.modes_bar import ModesBar
