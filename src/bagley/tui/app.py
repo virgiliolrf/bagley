@@ -6,7 +6,6 @@ import sys
 
 from textual.app import App, ComposeResult
 from textual.binding import Binding
-from textual.widgets import Static
 
 from bagley.tui.state import AppState, detect_os
 
@@ -26,14 +25,8 @@ class BagleyApp(App):
         self.state = AppState(os_info=detect_os(), engine_label="stub" if stub else "local")
 
     def compose(self) -> ComposeResult:
-        yield Static(self._header_text(), id="header")
-
-    def _header_text(self) -> str:
-        st = self.state
-        return (
-            f"Bagley · os={st.os_info.system} · scope=<none> · "
-            f"mode={st.mode} · voice={st.voice_state} · turn={st.turn}"
-        )
+        from bagley.tui.widgets.header import Header
+        yield Header(self.state)
 
     def action_disconnect(self) -> None:
         self.exit()
