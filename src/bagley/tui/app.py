@@ -42,6 +42,7 @@ class BagleyApp(App):
         Binding("f2", "focus('#hosts-panel')", "Hosts", show=True),
         Binding("f3", "focus('#chat-panel')", "Chat", show=True),
         Binding("f4", "focus('#target-panel')", "Notes", show=True),
+        Binding("ctrl+k", "open_palette", "Palette", show=True),
     ]
 
     def __init__(self, stub: bool = False, **kwargs) -> None:
@@ -97,6 +98,25 @@ class BagleyApp(App):
         self.query_one("#tab-bar").refresh_content()
         self.query_one("#hosts-panel").refresh_content()
         self.query_one("#target-panel").refresh_content()
+
+    async def action_open_palette(self) -> None:
+        from bagley.tui.widgets.palette import CommandPalette
+
+        def _on_dismiss(result: str | None) -> None:
+            if result is None:
+                return
+            if "(" in result:
+                name, _, rest = result.partition("(")
+                arg = rest.rstrip(")").strip("'\"")
+                method = getattr(self, f"action_{name}", None)
+                if method:
+                    method(arg)
+            else:
+                method = getattr(self, f"action_{result}", None)
+                if method:
+                    method()
+
+        self.push_screen(CommandPalette(), callback=_on_dismiss)
 
     def action_goto_tab(self, idx: int) -> None:
         target = idx - 1
