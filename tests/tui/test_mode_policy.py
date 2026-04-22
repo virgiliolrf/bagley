@@ -129,3 +129,47 @@ def test_apply_mode_recon_allowlist_blocks_hydra():
     apply_mode_to_loop(loop, "RECON")
     # hydra not in RECON allowlist → blocked
     assert loop.confirm_fn("hydra -l admin 10.10.10.10") is False
+
+
+from bagley.tui.app import BagleyApp
+
+
+@pytest.mark.asyncio
+async def test_mode_switch_applies_policy_to_chat_loop():
+    """After switching to EXPLOIT, ChatPanel's loop must use explicit confirm."""
+    app = BagleyApp(stub=True)
+    async with app.run_test(size=(160, 50)) as pilot:
+        await pilot.press("alt+3")      # → EXPLOIT
+        await pilot.pause()
+        from bagley.tui.panels.chat import ChatPanel
+        chat = app.query_one(ChatPanel)
+        # EXPLOIT allowlist blocks nmap (not in EXPLOIT allowlist)
+        assert chat._loop.confirm_fn("nmap -sV 10.10.10.10") is False
+        # hydra IS in EXPLOIT allowlist but explicit policy → still False
+        assert chat._loop.confirm_fn("hydra -l admin 10.10.10.10") is False
+
+
+@pytest.mark.asyncio
+async def test_mode_recon_auto_confirms_nmap():
+    """After switching to RECON, nmap is auto-confirmed."""
+    app = BagleyApp(stub=True)
+    async with app.run_test(size=(160, 50)) as pilot:
+        await pilot.press("alt+1")      # → RECON
+        await pilot.pause()
+        from bagley.tui.panels.chat import ChatPanel
+        chat = app.query_one(ChatPanel)
+        # nmap in RECON allowlist with auto policy → True
+        assert chat._loop.confirm_fn("nmap -sV 10.10.10.10") is True
+
+
+@pytest.mark.asyncio
+async def test_mode_report_blocks_all_exec():
+    """REPORT mode must block all shell execution."""
+    app = BagleyApp(stub=True)
+    async with app.run_test(size=(160, 50)) as pilot:
+        await pilot.press("alt+8")      # → REPORT
+        await pilot.pause()
+        from bagley.tui.panels.chat import ChatPanel
+        chat = app.query_one(ChatPanel)
+        assert chat._loop.confirm_fn("ls /") is False
+        assert chat._loop.confirm_fn("cat /etc/passwd") is False
