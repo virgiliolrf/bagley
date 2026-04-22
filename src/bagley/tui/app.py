@@ -91,13 +91,23 @@ class BagleyApp(App):
         from bagley.tui.widgets.statusline import Statusline
         from textual.containers import Horizontal
 
+        from bagley.tui.widgets.rings import Minimap
+        from textual.containers import Vertical
+
         yield Header(self.state)
         yield ModesBar(self.state)
         yield TabBar(self.state)
         with Horizontal(id="pane-row"):
             yield HostsPanel(self.state)
             yield ChatPanel(self.state)
-            yield TargetPanel(self.state)
+            # tab-0 (recon) shows target column + minimap stacked;
+            # future tabs show just the TargetPanel.
+            if self.state.active_tab == 0:
+                with Vertical(id="recon-right-col"):
+                    yield TargetPanel(self.state)
+                    yield Minimap()
+            else:
+                yield TargetPanel(self.state)
         yield InspectorPane()
         yield Statusline(self.state)
         from bagley.tui.widgets.toast import ToastLayer

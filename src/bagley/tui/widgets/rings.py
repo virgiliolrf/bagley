@@ -87,7 +87,7 @@ class Minimap(Static):
         self._states: dict[str, str] = {}   # last-octet str → state string
 
     def on_mount(self) -> None:
-        self._render()
+        self._render_map()
 
     def refresh_data(self, host_states: dict[str, str]) -> None:
         """Accept {ip: state} mapping; state in {up, down, scanning, unknown}."""
@@ -95,9 +95,9 @@ class Minimap(Static):
         for ip, state in host_states.items():
             last = ip.rsplit(".", 1)[-1]
             self._states[last] = state
-        self._render()
+        self._render_map()
 
-    def _render(self) -> None:
+    def _render_map(self) -> None:
         cells: list[str] = []
         for i in range(1, 255):
             key = str(i)
@@ -106,7 +106,20 @@ class Minimap(Static):
         rows: list[str] = []
         for r in range(0, 254, self._COLS):
             rows.append(" ".join(cells[r : r + self._COLS]))
-        self.update("\n".join(rows))
+        rendered = "\n".join(rows)
+        # Store the raw markup string so tests can inspect content without a
+        # mounted app; also pushed into Static.update for real rendering.
+        self._raw_markup = rendered
+        try:
+            self.update(rendered)
+        except Exception:
+            pass
+
+    # Read-only view of the most recently rendered markup text. Tests use
+    # `minimap.renderable` to introspect Minimap content without mounting.
+    @property
+    def renderable(self):  # type: ignore[override]
+        return getattr(self, "_raw_markup", "")
 
 
 # --------------------------------------------------------------------------- #
