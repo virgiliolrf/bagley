@@ -56,6 +56,7 @@ class BagleyApp(App):
         from bagley.tui.panels.hosts import HostsPanel
         from bagley.tui.panels.chat import ChatPanel
         from bagley.tui.panels.target import TargetPanel
+        from bagley.tui.widgets.statusline import Statusline
         from textual.containers import Horizontal
         yield Header(self.state)
         yield ModesBar(self.state)
@@ -64,6 +65,7 @@ class BagleyApp(App):
             yield HostsPanel(self.state)
             yield ChatPanel(self.state)
             yield TargetPanel(self.state)
+        yield Statusline(self.state)
 
     def action_focus(self, selector: str) -> None:
         try:

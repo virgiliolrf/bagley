@@ -60,3 +60,7 @@ class ChatPanel(Vertical):
             log.write(f"{prefix} {step.content}")
         self._state.turn += 1
         self.app.query_one("#header").refresh_content()
+        try:
+            self.app.query_one("#statusline").refresh_content()
+        except Exception:
+            pass
