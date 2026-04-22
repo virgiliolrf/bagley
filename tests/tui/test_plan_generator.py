@@ -55,3 +55,51 @@ def test_plan_is_done_when_all_advanced():
     assert not p.is_done()
     p.advance()
     assert p.is_done()
+
+# ── Generator tests ─────────────────────────────────────────────────────────
+
+from bagley.tui.plan_mode.generator import PlanGenerator, PLAN_SYSTEM_SUFFIX
+
+
+class _StubEngine:
+    """Returns a hard-coded JSON plan string regardless of input."""
+
+    PLAN_JSON = """
+    {
+      "goal": "recon 10.0.0.1",
+      "steps": [
+        {"kind": "run", "cmd": "nmap -sV 10.0.0.1", "description": "Port scan"},
+        {"kind": "prompt", "cmd": "summarize attack surface", "description": "Ask Bagley"}
+      ]
+    }
+    """
+
+    def generate(self, messages, system="", **kwargs):
+        return self.PLAN_JSON
+
+
+def test_generator_produces_plan():
+    gen = PlanGenerator(engine=_StubEngine())
+    plan = gen.generate(goal="recon 10.0.0.1", tab_id="10.0.0.1")
+    assert isinstance(plan, Plan)
+    assert plan.goal == "recon 10.0.0.1"
+    assert len(plan.steps) == 2
+    assert plan.steps[0].kind == "run"
+    assert plan.steps[1].kind == "prompt"
+    assert plan.tab_id == "10.0.0.1"
+
+
+def test_generator_system_suffix_present():
+    assert "JSON" in PLAN_SYSTEM_SUFFIX
+    assert "steps" in PLAN_SYSTEM_SUFFIX
+
+
+def test_generator_bad_json_raises():
+    class _BadEngine:
+        def generate(self, messages, system="", **kwargs):
+            return "NOT JSON AT ALL }{{"
+
+    gen = PlanGenerator(engine=_BadEngine())
+    import pytest as _pytest
+    with _pytest.raises(ValueError, match="parse"):
+        gen.generate(goal="anything", tab_id="tab0")
