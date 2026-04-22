@@ -1,4 +1,4 @@
-"""TargetPanel — right column: target, kill-chain, creds, notes. Phase 1 stub."""
+"""TargetPanel — target info, kill-chain, creds, notes."""
 
 from __future__ import annotations
 
@@ -6,6 +6,8 @@ from textual.containers import Vertical
 from textual.widgets import Static
 
 from bagley.tui.state import AppState
+
+_STAGES = ["recon", "enum", "exploit", "postex", "privesc", "persist", "cleanup"]
 
 
 class TargetPanel(Vertical):
@@ -19,9 +21,39 @@ class TargetPanel(Vertical):
         self.can_focus = True
 
     def compose(self):
-        yield Static("[b orange3]◆ TARGET[/]\n[dim](no target)[/]", id="target-info")
-        yield Static("[b orange3]◆ KILL-CHAIN[/]\n"
-                      "[dim]· recon · enum · exploit · postex · privesc · persist · cleanup[/]",
-                      id="killchain")
-        yield Static("[b orange3]◆ CREDS[/]\n[dim](none yet)[/]", id="creds-section")
-        yield Static("[b orange3]◆ NOTES[/]\n[dim](empty)[/]", id="notes-section")
+        yield Static("", id="target-info")
+        yield Static("", id="killchain")
+        yield Static("", id="creds-section")
+        yield Static("", id="notes-section")
+
+    def on_mount(self) -> None:
+        self.refresh_content()
+
+    def refresh_content(self) -> None:
+        tab = self._state.tabs[self._state.active_tab]
+        if tab.kind == "recon":
+            info = "[b orange3]◆ TARGET[/]\n[dim](no target — recon tab)[/]"
+        else:
+            info = f"[b orange3]◆ TARGET[/]\n[orange3]{tab.id}[/]"
+
+        kc_lines = ["[b orange3]◆ KILL-CHAIN[/]"]
+        for i, stage in enumerate(_STAGES):
+            if i < tab.killchain_stage:
+                kc_lines.append(f"[green]✓[/] {stage}")
+            elif i == tab.killchain_stage:
+                kc_lines.append(f"[orange3]▸[/] [b]{stage}[/]")
+            else:
+                kc_lines.append(f"[dim]·[/] [dim]{stage}[/]")
+
+        creds = "[b orange3]◆ CREDS[/]\n"
+        creds += "[dim](none yet)[/]" if not tab.creds else "\n".join(
+            f"{c.get('user','?')}:{c.get('secret','?')}" for c in tab.creds
+        )
+
+        notes = "[b orange3]◆ NOTES[/]\n"
+        notes += tab.notes_md or "[dim](empty)[/]"
+
+        self.query_one("#target-info").update(info)
+        self.query_one("#killchain").update("\n".join(kc_lines))
+        self.query_one("#creds-section").update(creds)
+        self.query_one("#notes-section").update(notes)

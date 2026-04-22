@@ -86,6 +86,8 @@ class BagleyApp(App):
         self.state.tabs.append(TabState(id=tab_id, kind="target"))
         self.state.active_tab = len(self.state.tabs) - 1
         self.query_one("#tab-bar").refresh_content()
+        self.query_one("#hosts-panel").refresh_content()
+        self.query_one("#target-panel").refresh_content()
 
     def action_close_tab(self) -> None:
         if self.state.active_tab == 0:
@@ -93,12 +95,16 @@ class BagleyApp(App):
         del self.state.tabs[self.state.active_tab]
         self.state.active_tab = max(0, self.state.active_tab - 1)
         self.query_one("#tab-bar").refresh_content()
+        self.query_one("#hosts-panel").refresh_content()
+        self.query_one("#target-panel").refresh_content()
 
     def action_goto_tab(self, idx: int) -> None:
         target = idx - 1
         if 0 <= target < len(self.state.tabs):
             self.state.active_tab = target
             self.query_one("#tab-bar").refresh_content()
+            self.query_one("#hosts-panel").refresh_content()
+            self.query_one("#target-panel").refresh_content()
 
 
 def run() -> None:
