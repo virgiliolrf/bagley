@@ -82,7 +82,60 @@ CREATE TABLE IF NOT EXISTS vectors (
 CREATE INDEX IF NOT EXISTS idx_attempts_host ON attempts(host);
 CREATE INDEX IF NOT EXISTS idx_findings_host ON findings(host);
 CREATE INDEX IF NOT EXISTS idx_ports_host ON ports(host);
+CREATE TABLE IF NOT EXISTS sessions (
+    id        TEXT PRIMARY KEY,
+    tab_id    TEXT NOT NULL,
+    method    TEXT NOT NULL,
+    started   REAL NOT NULL,
+    ended     REAL,
+    uptime_s  REAL
+);
 """
+
+
+# ── Sessions (persistent shells) ──────────────────────────────────────────────
+
+def init_sessions_table(conn) -> None:
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS sessions (
+            id        TEXT PRIMARY KEY,
+            tab_id    TEXT NOT NULL,
+            method    TEXT NOT NULL,
+            started   REAL NOT NULL,
+            ended     REAL,
+            uptime_s  REAL
+        )
+    """)
+    conn.commit()
+
+
+def upsert_session(conn, *, id: str, tab_id: str, method: str, started: float) -> None:
+    conn.execute(
+        """INSERT INTO sessions (id, tab_id, method, started)
+           VALUES (?, ?, ?, ?)
+           ON CONFLICT(id) DO UPDATE SET method=excluded.method""",
+        (id, tab_id, method, started),
+    )
+    conn.commit()
+
+
+def close_session(conn, *, id: str, ended: float) -> None:
+    conn.execute(
+        "UPDATE sessions SET ended=?, uptime_s=ended-started WHERE id=?",
+        (ended, id),
+    )
+    conn.commit()
+
+
+def list_sessions(conn) -> list[dict]:
+    rows = conn.execute(
+        "SELECT id, tab_id, method, started, ended, uptime_s FROM sessions ORDER BY started DESC"
+    ).fetchall()
+    return [
+        {"id": r[0], "tab_id": r[1], "method": r[2],
+         "started": r[3], "ended": r[4], "uptime_s": r[5]}
+        for r in rows
+    ]
 
 
 @dataclass
