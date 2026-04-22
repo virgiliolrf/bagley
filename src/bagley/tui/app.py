@@ -151,3 +151,7 @@ def run() -> None:
         return
 
     BagleyApp(stub=args.stub).run()
+
+
+if __name__ == "__main__":
+    run()
