@@ -27,6 +27,17 @@ class BagleyApp(App):
         Binding("alt+7", "set_mode(7)", "", show=False),
         Binding("alt+8", "set_mode(8)", "", show=False),
         Binding("alt+9", "set_mode(9)", "", show=False),
+        Binding("ctrl+t", "new_tab", "New tab", show=True),
+        Binding("ctrl+w", "close_tab", "Close tab", show=True),
+        Binding("ctrl+1", "goto_tab(1)", "", show=False),
+        Binding("ctrl+2", "goto_tab(2)", "", show=False),
+        Binding("ctrl+3", "goto_tab(3)", "", show=False),
+        Binding("ctrl+4", "goto_tab(4)", "", show=False),
+        Binding("ctrl+5", "goto_tab(5)", "", show=False),
+        Binding("ctrl+6", "goto_tab(6)", "", show=False),
+        Binding("ctrl+7", "goto_tab(7)", "", show=False),
+        Binding("ctrl+8", "goto_tab(8)", "", show=False),
+        Binding("ctrl+9", "goto_tab(9)", "", show=False),
     ]
 
     def __init__(self, stub: bool = False, **kwargs) -> None:
@@ -38,6 +49,8 @@ class BagleyApp(App):
         from bagley.tui.widgets.modes_bar import ModesBar
         yield Header(self.state)
         yield ModesBar(self.state)
+        from bagley.tui.widgets.tab_bar import TabBar
+        yield TabBar(self.state)
 
     def action_disconnect(self) -> None:
         self.exit()
@@ -47,6 +60,26 @@ class BagleyApp(App):
         self.state.mode = by_index(idx).name
         self.query_one("#header").refresh_content()
         self.query_one("#modes-bar").refresh_content()
+
+    def action_new_tab(self) -> None:
+        from bagley.tui.state import TabState
+        tab_id = f"target-{len(self.state.tabs)}"
+        self.state.tabs.append(TabState(id=tab_id, kind="target"))
+        self.state.active_tab = len(self.state.tabs) - 1
+        self.query_one("#tab-bar").refresh_content()
+
+    def action_close_tab(self) -> None:
+        if self.state.active_tab == 0:
+            return
+        del self.state.tabs[self.state.active_tab]
+        self.state.active_tab = max(0, self.state.active_tab - 1)
+        self.query_one("#tab-bar").refresh_content()
+
+    def action_goto_tab(self, idx: int) -> None:
+        target = idx - 1
+        if 0 <= target < len(self.state.tabs):
+            self.state.active_tab = target
+            self.query_one("#tab-bar").refresh_content()
 
 
 def run() -> None:
