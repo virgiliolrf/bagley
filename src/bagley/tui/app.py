@@ -128,10 +128,24 @@ class BagleyApp(App):
 
 
 def run() -> None:
-    simple = "--simple" in sys.argv
-    if simple:
+    if "--simple" in sys.argv:
         from bagley.agent.cli import app as simple_app
         sys.argv = [a for a in sys.argv if a != "--simple"]
         simple_app()
         return
-    BagleyApp().run()
+
+    import argparse
+    parser = argparse.ArgumentParser(prog="bagley", add_help=False)
+    parser.add_argument("--stub", action="store_true")
+    parser.add_argument("--adapter", default=None)
+    parser.add_argument("--base", default="./models/foundation-sec-8b")
+    parser.add_argument("--ollama", action="store_true")
+    parser.add_argument("--ollama-model", default="bagley")
+    parser.add_argument("-h", "--help", action="store_true")
+    args, _ = parser.parse_known_args()
+
+    if args.help:
+        print("bagley [--stub] [--adapter PATH] [--base PATH] [--ollama] [--simple]")
+        return
+
+    BagleyApp(stub=args.stub).run()
