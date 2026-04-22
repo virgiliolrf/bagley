@@ -21,6 +21,7 @@ from bagley.agent.loop import ReActLoop
 from bagley.inference.engine import stub_response
 from bagley.persona import DEFAULT_SYSTEM
 from bagley.tui.interactions.bang import BangExpander, BangExpansionError
+from bagley.tui.interactions.mentions import MentionSubstitutor, build_mention_entries
 from bagley.tui.modes import by_name
 from bagley.tui.modes.persona import mode_system_suffix
 from bagley.tui.modes.policy import apply_mode_to_loop
@@ -234,6 +235,29 @@ class ChatPanel(Vertical):
         except BangExpansionError as exc:
             self._post_system_message(f"[bang error] {exc}")
             return
+
+        # @ mention substitution
+        try:
+            if self._state.tabs:
+                tab = self._state.tabs[self._state.active_tab]
+                last_scan = ""
+                if tab.react_history:
+                    last_scan = tab.react_history[-1].get("output", "") if isinstance(
+                        tab.react_history[-1], dict) else ""
+                context = {
+                    "hosts": list(self._state.scope_hosts),
+                    "creds": {
+                        c.get("user", ""): f"{c.get('user','')}:{c.get('pass','')}"
+                        for c in tab.creds
+                    },
+                    "scan_last": last_scan,
+                    "findings": {},
+                    "playbooks": [],
+                }
+                substitutor = MentionSubstitutor(context=context)
+                msg = substitutor.substitute(msg)
+        except Exception:
+            pass
 
         log = self.query_one("#chat-log", RichLog)
         log.write(f"[bold green]you>[/] {msg}")
