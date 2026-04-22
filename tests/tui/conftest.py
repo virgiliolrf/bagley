@@ -1,0 +1,1 @@
+"""Shared Textual Pilot fixtures."""
