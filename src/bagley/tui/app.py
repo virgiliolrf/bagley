@@ -18,6 +18,15 @@ class BagleyApp(App):
     BINDINGS = [
         Binding("ctrl+d", "disconnect", "Disconnect", show=True),
         Binding("ctrl+c", "disconnect", "Disconnect", show=False),
+        Binding("alt+1", "set_mode(1)", "", show=False),
+        Binding("alt+2", "set_mode(2)", "", show=False),
+        Binding("alt+3", "set_mode(3)", "", show=False),
+        Binding("alt+4", "set_mode(4)", "", show=False),
+        Binding("alt+5", "set_mode(5)", "", show=False),
+        Binding("alt+6", "set_mode(6)", "", show=False),
+        Binding("alt+7", "set_mode(7)", "", show=False),
+        Binding("alt+8", "set_mode(8)", "", show=False),
+        Binding("alt+9", "set_mode(9)", "", show=False),
     ]
 
     def __init__(self, stub: bool = False, **kwargs) -> None:
@@ -26,10 +35,18 @@ class BagleyApp(App):
 
     def compose(self) -> ComposeResult:
         from bagley.tui.widgets.header import Header
+        from bagley.tui.widgets.modes_bar import ModesBar
         yield Header(self.state)
+        yield ModesBar(self.state)
 
     def action_disconnect(self) -> None:
         self.exit()
+
+    def action_set_mode(self, idx: int) -> None:
+        from bagley.tui.modes import by_index
+        self.state.mode = by_index(idx).name
+        self.query_one("#header").refresh_content()
+        self.query_one("#modes-bar").refresh_content()
 
 
 def run() -> None:
