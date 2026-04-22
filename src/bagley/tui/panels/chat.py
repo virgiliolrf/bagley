@@ -20,6 +20,7 @@ from textual.widgets import Button, Input, Label, RichLog, Static
 from bagley.agent.loop import ReActLoop
 from bagley.inference.engine import stub_response
 from bagley.persona import DEFAULT_SYSTEM
+from bagley.tui.interactions.bang import BangExpander, BangExpansionError
 from bagley.tui.modes import by_name
 from bagley.tui.modes.persona import mode_system_suffix
 from bagley.tui.modes.policy import apply_mode_to_loop
@@ -223,10 +224,27 @@ class ChatPanel(Vertical):
         if not msg:
             return
         event.input.value = ""
+
+        # Bang expansion (!!, !N, !prefix) before anything else
+        try:
+            if self._state.tabs:
+                tab = self._state.tabs[self._state.active_tab]
+                expander = BangExpander(cmd_history=tab.cmd_history)
+                msg = expander.expand(msg)
+        except BangExpansionError as exc:
+            self._post_system_message(f"[bang error] {exc}")
+            return
+
         log = self.query_one("#chat-log", RichLog)
         log.write(f"[bold green]you>[/] {msg}")
         if self._handle_slash_command(msg):
             return
+        # Record in history for future bang expansion
+        try:
+            if self._state.tabs:
+                self._state.tabs[self._state.active_tab].cmd_history.append(msg)
+        except Exception:
+            pass
         self._respond(msg)
 
     def _respond(self, msg: str) -> None:
