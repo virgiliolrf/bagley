@@ -91,3 +91,31 @@ async def test_inspector_has_action_buttons():
         from textual.widgets import Button
         buttons = pane.query(Button)
         assert len(buttons) > 0
+
+
+from bagley.tui.app import BagleyApp
+from textual.widgets import Input
+
+
+@pytest.mark.asyncio
+async def test_bagley_app_mounts_inspector_pane():
+    app = BagleyApp(stub=True)
+    async with app.run_test(size=(160, 50)) as pilot:
+        pane = app.query_one(InspectorPane)
+        assert pane is not None
+
+
+@pytest.mark.asyncio
+async def test_bagley_app_ctrl_i_opens_inspector():
+    app = BagleyApp(stub=True)
+    async with app.run_test(size=(160, 50)) as pilot:
+        # Type something in chat input first to give Ctrl+I something to inspect
+        await pilot.press("f3")          # focus chat
+        await pilot.pause()
+        inp = app.query_one("#chat-input", Input)
+        await pilot.click(inp)
+        await pilot.press("1", "9", "2", ".", "1", "6", "8", ".", "1", ".", "1")
+        await pilot.press("ctrl+i")
+        await pilot.pause()
+        pane = app.query_one(InspectorPane)
+        assert pane.visible

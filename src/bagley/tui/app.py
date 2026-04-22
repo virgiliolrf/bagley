@@ -1,4 +1,4 @@
-"""BagleyApp — Textual TUI entrypoint."""
+"""BagleyApp — Textual TUI entrypoint. Phase 2: modes + inspector + Ctrl+M."""
 
 from __future__ import annotations
 
@@ -6,6 +6,7 @@ import sys
 
 from textual.app import App, ComposeResult
 from textual.binding import Binding
+from textual.widgets import Input
 
 from bagley.tui.state import AppState, detect_os
 
@@ -19,6 +20,7 @@ class BagleyApp(App):
     BINDINGS = [
         Binding("ctrl+d", "disconnect", "Disconnect", show=True),
         Binding("ctrl+c", "disconnect", "Disconnect", show=False),
+        # Mode switches
         Binding("alt+1", "set_mode(1)", "", show=False),
         Binding("alt+2", "set_mode(2)", "", show=False),
         Binding("alt+3", "set_mode(3)", "", show=False),
@@ -28,8 +30,10 @@ class BagleyApp(App):
         Binding("alt+7", "set_mode(7)", "", show=False),
         Binding("alt+8", "set_mode(8)", "", show=False),
         Binding("alt+9", "set_mode(9)", "", show=False),
-        Binding("ctrl+t", "new_tab", "New tab", show=True),
-        Binding("ctrl+w", "close_tab", "Close tab", show=True),
+        Binding("ctrl+m", "cycle_mode", "Cycle mode", show=False),
+        # Tab management
+        Binding("ctrl+t", "new_tab",     "New tab",   show=True),
+        Binding("ctrl+w", "close_tab",   "Close tab", show=True),
         Binding("ctrl+1", "goto_tab(1)", "", show=False),
         Binding("ctrl+2", "goto_tab(2)", "", show=False),
         Binding("ctrl+3", "goto_tab(3)", "", show=False),
@@ -39,9 +43,13 @@ class BagleyApp(App):
         Binding("ctrl+7", "goto_tab(7)", "", show=False),
         Binding("ctrl+8", "goto_tab(8)", "", show=False),
         Binding("ctrl+9", "goto_tab(9)", "", show=False),
-        Binding("f2", "focus('#hosts-panel')", "Hosts", show=True),
-        Binding("f3", "focus('#chat-panel')", "Chat", show=True),
+        # Focus
+        Binding("f2", "focus('#hosts-panel')",  "Hosts", show=True),
+        Binding("f3", "focus('#chat-panel')",   "Chat",  show=True),
         Binding("f4", "focus('#target-panel')", "Notes", show=True),
+        # Inspector
+        Binding("ctrl+i", "open_inspector", "Inspect", show=False),
+        # Palette
         Binding("ctrl+k", "open_palette", "Palette", show=True),
     ]
 
@@ -56,8 +64,10 @@ class BagleyApp(App):
         from bagley.tui.panels.hosts import HostsPanel
         from bagley.tui.panels.chat import ChatPanel
         from bagley.tui.panels.target import TargetPanel
+        from bagley.tui.panels.inspector import InspectorPane
         from bagley.tui.widgets.statusline import Statusline
         from textual.containers import Horizontal
+
         yield Header(self.state)
         yield ModesBar(self.state)
         yield TabBar(self.state)
@@ -65,41 +75,94 @@ class BagleyApp(App):
             yield HostsPanel(self.state)
             yield ChatPanel(self.state)
             yield TargetPanel(self.state)
+        yield InspectorPane()
         yield Statusline(self.state)
+
+    # -- Actions --
 
     def action_focus(self, selector: str) -> None:
         try:
-            widget = self.query_one(selector)
+            self.query_one(selector).focus()
         except Exception:
-            return
-        widget.focus()
+            pass
 
     def action_disconnect(self) -> None:
         self.exit()
 
     def action_set_mode(self, idx: int) -> None:
         from bagley.tui.modes import by_index
-        self.state.mode = by_index(idx).name
-        self.query_one("#header").refresh_content()
-        self.query_one("#modes-bar").refresh_content()
+        mode = by_index(idx)
+        self.state.mode = mode.name
+        self._apply_mode_everywhere(mode.name)
+
+    def action_cycle_mode(self) -> None:
+        from bagley.tui.modes import MODES
+        current_idx = next(
+            (i for i, m in enumerate(MODES) if m.name == self.state.mode), 0
+        )
+        next_mode = MODES[(current_idx + 1) % len(MODES)]
+        self.state.mode = next_mode.name
+        self._apply_mode_everywhere(next_mode.name)
+
+    def _apply_mode_everywhere(self, mode_name: str) -> None:
+        """Update header, modes bar, and chat panel after a mode change."""
+        try:
+            self.query_one("#header").refresh_content()
+        except Exception:
+            pass
+        try:
+            self.query_one("#modes-bar").refresh_content()
+        except Exception:
+            pass
+        try:
+            from bagley.tui.panels.chat import ChatPanel
+            self.query_one(ChatPanel).refresh_mode()
+        except Exception:
+            pass
 
     def action_new_tab(self) -> None:
         from bagley.tui.state import TabState
         tab_id = f"target-{len(self.state.tabs)}"
         self.state.tabs.append(TabState(id=tab_id, kind="target"))
         self.state.active_tab = len(self.state.tabs) - 1
-        self.query_one("#tab-bar").refresh_content()
-        self.query_one("#hosts-panel").refresh_content()
-        self.query_one("#target-panel").refresh_content()
+        self._refresh_tab_dependent()
 
     def action_close_tab(self) -> None:
         if self.state.active_tab == 0:
             return
         del self.state.tabs[self.state.active_tab]
         self.state.active_tab = max(0, self.state.active_tab - 1)
-        self.query_one("#tab-bar").refresh_content()
-        self.query_one("#hosts-panel").refresh_content()
-        self.query_one("#target-panel").refresh_content()
+        self._refresh_tab_dependent()
+
+    def action_goto_tab(self, idx: int) -> None:
+        target = idx - 1
+        if 0 <= target < len(self.state.tabs):
+            self.state.active_tab = target
+            self._refresh_tab_dependent()
+
+    def _refresh_tab_dependent(self) -> None:
+        for widget_id in ("#tab-bar", "#hosts-panel", "#target-panel"):
+            try:
+                self.query_one(widget_id).refresh_content()
+            except Exception:
+                pass
+
+    def action_open_inspector(self) -> None:
+        """Open inspector with the current chat-input value as selection."""
+        from bagley.tui.panels.inspector import InspectorPane
+        try:
+            text = self.query_one("#chat-input", Input).value.strip()
+        except Exception:
+            text = ""
+        if text:
+            self.query_one(InspectorPane).inspect(text)
+
+    def action_close_inspector(self) -> None:
+        from bagley.tui.panels.inspector import InspectorPane
+        try:
+            self.query_one(InspectorPane).display = False
+        except Exception:
+            pass
 
     async def action_open_palette(self) -> None:
         from bagley.tui.widgets.palette import CommandPalette
@@ -107,12 +170,17 @@ class BagleyApp(App):
         def _on_dismiss(result: str | None) -> None:
             if result is None:
                 return
+            if result.startswith("__placeholder__"):
+                return
             if "(" in result:
                 name, _, rest = result.partition("(")
-                arg = rest.rstrip(")").strip("'\"")
+                arg_raw = rest.rstrip(")").strip("'\"")
                 method = getattr(self, f"action_{name}", None)
                 if method:
-                    method(arg)
+                    try:
+                        method(int(arg_raw))
+                    except ValueError:
+                        method(arg_raw)
             else:
                 method = getattr(self, f"action_{result}", None)
                 if method:
@@ -120,13 +188,72 @@ class BagleyApp(App):
 
         self.push_screen(CommandPalette(), callback=_on_dismiss)
 
-    def action_goto_tab(self, idx: int) -> None:
-        target = idx - 1
-        if 0 <= target < len(self.state.tabs):
-            self.state.active_tab = target
-            self.query_one("#tab-bar").refresh_content()
-            self.query_one("#hosts-panel").refresh_content()
-            self.query_one("#target-panel").refresh_content()
+    # -- Palette-dispatched stubs (filled out in later phases) --
+
+    def action_swap_engine(self) -> None:
+        pass   # Phase 6
+
+    def action_set_engine(self, label: str) -> None:
+        self.state.engine_label = label
+        try:
+            self.query_one("#header").refresh_content()
+        except Exception:
+            pass
+
+    def action_run_playbook(self, name: str) -> None:
+        pass   # Phase 4
+
+    def action_open_alerts(self) -> None:
+        pass   # Phase 3
+
+    def action_clear_alerts(self) -> None:
+        self.state.unread_alerts = 0
+        try:
+            self.query_one("#header").refresh_content()
+        except Exception:
+            pass
+
+    def action_search_history(self) -> None:
+        pass   # Phase 4
+
+    def action_clear_chat(self) -> None:
+        try:
+            self.query_one("#chat-log").clear()
+        except Exception:
+            pass
+
+    def action_last_tool_output(self) -> None:
+        pass   # Phase 4
+
+    def action_show_help(self) -> None:
+        pass   # Phase 6
+
+    def action_toggle_voice(self) -> None:
+        pass   # Phase 6
+
+    def action_open_payload_builder(self) -> None:
+        pass   # Phase 6
+
+    def action_toggle_plan_mode(self) -> None:
+        pass   # Phase 4
+
+    def action_open_timeline(self) -> None:
+        pass   # Phase 5
+
+    def action_toggle_graph(self) -> None:
+        pass   # Phase 5
+
+    def action_background_shell(self) -> None:
+        pass   # Phase 5
+
+    def action_undo_finding(self) -> None:
+        pass   # Phase 3
+
+    def action_set_scope(self) -> None:
+        pass   # Phase 3
+
+    def action_export_report(self) -> None:
+        pass   # Phase 6
 
 
 def run() -> None:
