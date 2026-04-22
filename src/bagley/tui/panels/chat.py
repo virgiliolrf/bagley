@@ -22,6 +22,9 @@ from bagley.inference.engine import stub_response
 from bagley.persona import DEFAULT_SYSTEM
 from bagley.tui.interactions.bang import BangExpander, BangExpansionError
 from bagley.tui.interactions.mentions import MentionSubstitutor, build_mention_entries
+from bagley.tui.interactions.smart_paste import SmartPasteDispatcher, PasteClassification
+from bagley.tui.parsers.nmap import parse_nmap_output
+from bagley.tui.parsers.hashes import parse_hash_list
 from bagley.tui.modes import by_name
 from bagley.tui.modes.persona import mode_system_suffix
 from bagley.tui.modes.policy import apply_mode_to_loop
@@ -465,3 +468,76 @@ class ChatPanel(Vertical):
                 pass
             self._plan_overlay = None
             self.styles.opacity = "1"
+
+    # -- Smart paste --
+
+    def handle_smart_paste(self, text: str) -> None:
+        """Classify pasted content and dispatch to the appropriate handler."""
+        dispatcher = SmartPasteDispatcher()
+        cls = dispatcher.classify(text)
+
+        if cls == PasteClassification.NMAP:
+            hosts = parse_nmap_output(text)
+            summary = f"Parsed nmap output: {len(hosts)} host(s). Promoting to memory."
+            for host in hosts:
+                # Write to memory via auto-memory layer (Phase 3 API)
+                try:
+                    from bagley.tui.memory import ingest_hosts  # type: ignore[attr-defined]
+                    ingest_hosts(hosts)
+                except ImportError:
+                    pass
+                except Exception:
+                    pass
+            self._post_system_message(summary)
+
+        elif cls == PasteClassification.HASH_LIST:
+            pairs = parse_hash_list(text)
+            summary = f"Detected {len(pairs)} hash(es): " + ", ".join(
+                f"{h[:8]}… ({t.value})" for h, t in pairs[:3]
+            )
+            self._post_system_message(summary)
+
+        elif cls == PasteClassification.CVE:
+            cve = text.strip()
+            self._post_system_message(f"CVE detected: {cve}. Opening inspector.")
+            try:
+                from bagley.tui.panels.inspector import InspectorPane
+                pane = self.app.query_one(InspectorPane)
+                pane.inspect(cve)
+            except Exception:
+                pass
+
+        elif cls == PasteClassification.URL:
+            url = text.strip()
+            self._post_system_message(
+                f"URL pasted: {url}. Consider: fingerprint + dir-bust."
+            )
+
+        elif cls == PasteClassification.IP_LIST:
+            ips = dispatcher.extract_ips(text)
+
+            def _on_confirm(confirmed: bool) -> None:
+                if confirmed:
+                    for ip in ips:
+                        self._state.scope_hosts = frozenset(
+                            self._state.scope_hosts | {ip}
+                        )
+                    self._post_system_message(f"Added {len(ips)} IP(s) to scope.")
+                else:
+                    self._post_system_message("Scope add cancelled.")
+
+            # Textual constraint: use inline ConfirmPanel (project convention)
+            # instead of pushing a modal screen. Falls back to auto-confirm
+            # outside a mounted app.
+            try:
+                self.request_confirm(
+                    f"Add {len(ips)} IP(s) to scope?", _on_confirm,
+                )
+            except Exception:
+                # If confirm panel not available (e.g., panel not mounted yet),
+                # default to doing the add without interactive prompt.
+                _on_confirm(True)
+
+        else:
+            # Fallback: send as-is to chat loop
+            self._submit_to_loop(text)

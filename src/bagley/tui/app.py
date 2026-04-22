@@ -55,6 +55,8 @@ class BagleyApp(App):
         Binding("ctrl+n", "open_alerts_log", "Alerts", show=True),
         # Plan mode
         Binding("alt+p", "toggle_plan", "Plan mode", show=False),
+        # Smart paste
+        Binding("ctrl+shift+v", "smart_paste", "Smart paste", show=False),
     ]
 
     def __init__(self, stub: bool = False, **kwargs) -> None:
@@ -367,6 +369,26 @@ class BagleyApp(App):
             chat.toggle_plan_mode()
         except Exception:
             self.notify("No chat panel active", severity="warning")
+
+    def action_smart_paste(self) -> None:
+        """Invoke smart paste: reads clipboard and dispatches to ChatPanel."""
+        try:
+            import pyperclip
+            text = pyperclip.paste()
+        except Exception:
+            try:
+                self.notify("Could not read clipboard (pyperclip missing?)", severity="error")
+            except Exception:
+                pass
+            return
+        try:
+            chat = self.query_one("ChatPanel")
+            chat.handle_smart_paste(text)
+        except Exception:
+            try:
+                self.notify("No active chat panel for smart paste", severity="warning")
+            except Exception:
+                pass
 
     def action_open_timeline(self) -> None:
         pass   # Phase 5
