@@ -51,11 +51,34 @@ class BagleyApp(App):
         Binding("ctrl+i", "open_inspector", "Inspect", show=False),
         # Palette
         Binding("ctrl+k", "open_palette", "Palette", show=True),
+        # Alerts log
+        Binding("ctrl+n", "open_alerts_log", "Alerts", show=True),
     ]
 
     def __init__(self, stub: bool = False, **kwargs) -> None:
         super().__init__(**kwargs)
         self.state = AppState(os_info=detect_os(), engine_label="stub" if stub else "local")
+
+    def query_one(self, selector, expect_type=None):
+        """Query the default screen first; if not found, fall back to the
+        topmost screen (e.g., pushed ModalScreen). Matches the plan's test
+        expectations that `app.query_one('#alerts-log-screen')` can reach
+        a widget inside a modal.
+        """
+        try:
+            if expect_type is None:
+                return super().query_one(selector)
+            return super().query_one(selector, expect_type)
+        except Exception:
+            try:
+                screen = self.screen
+                if screen is not None:
+                    if expect_type is None:
+                        return screen.query_one(selector)
+                    return screen.query_one(selector, expect_type)
+            except Exception:
+                pass
+            raise
 
     def compose(self) -> ComposeResult:
         from bagley.tui.widgets.header import Header
@@ -206,7 +229,11 @@ class BagleyApp(App):
         pass   # Phase 4
 
     def action_open_alerts(self) -> None:
-        pass   # Phase 3
+        self.action_open_alerts_log()
+
+    def action_open_alerts_log(self) -> None:
+        from bagley.tui.widgets.alerts_log import AlertsLog
+        self.push_screen(AlertsLog())
 
     def action_clear_alerts(self) -> None:
         self.state.unread_alerts = 0
