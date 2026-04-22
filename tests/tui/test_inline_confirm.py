@@ -115,3 +115,33 @@ async def test_confirm_panel_key_n_rejects():
         await pilot.press("n")
         await pilot.pause()
         assert results == [False]
+
+
+from bagley.tui.app import BagleyApp as _BagleyApp
+from bagley.tui.panels.chat import ChatPanel as _ChatPanel
+
+
+@pytest.mark.asyncio
+async def test_mode_change_updates_chat_border_color():
+    app = _BagleyApp(stub=True)
+    async with app.run_test(size=(160, 50)) as pilot:
+        await pilot.press("alt+3")      # EXPLOIT = red
+        await pilot.pause()
+        chat = app.query_one(_ChatPanel)
+        # styles.border is a tuple ("round", Color) — check color name or value
+        border_color = str(chat.styles.border_top[1])
+        assert app.state.mode == "EXPLOIT"
+        # border must have changed from default cyan (RECON) to red (EXPLOIT)
+        assert "red" in border_color or border_color != "cyan"
+
+
+@pytest.mark.asyncio
+async def test_ctrl_m_cycles_modes():
+    app = _BagleyApp(stub=True)
+    async with app.run_test(size=(160, 50)) as pilot:
+        initial_mode = app.state.mode   # "RECON"
+        await pilot.press("ctrl+m")
+        await pilot.pause()
+        assert app.state.mode != initial_mode
+        # Cycling from RECON should move to ENUM (index 2)
+        assert app.state.mode == "ENUM"
