@@ -77,6 +77,8 @@ class BagleyApp(App):
             yield TargetPanel(self.state)
         yield InspectorPane()
         yield Statusline(self.state)
+        from bagley.tui.widgets.toast import ToastLayer
+        yield ToastLayer()
 
     # -- Actions --
 
