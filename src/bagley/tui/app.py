@@ -13,6 +13,7 @@ from bagley.tui.state import AppState, detect_os
 class BagleyApp(App):
     CSS = """
     #header { height: 1; background: $panel; color: $text; padding: 0 1; }
+    #pane-row { height: 1fr; }
     """
 
     BINDINGS = [
@@ -38,6 +39,9 @@ class BagleyApp(App):
         Binding("ctrl+7", "goto_tab(7)", "", show=False),
         Binding("ctrl+8", "goto_tab(8)", "", show=False),
         Binding("ctrl+9", "goto_tab(9)", "", show=False),
+        Binding("f2", "focus('#hosts-panel')", "Hosts", show=True),
+        Binding("f3", "focus('#chat-panel')", "Chat", show=True),
+        Binding("f4", "focus('#target-panel')", "Notes", show=True),
     ]
 
     def __init__(self, stub: bool = False, **kwargs) -> None:
@@ -47,10 +51,25 @@ class BagleyApp(App):
     def compose(self) -> ComposeResult:
         from bagley.tui.widgets.header import Header
         from bagley.tui.widgets.modes_bar import ModesBar
+        from bagley.tui.widgets.tab_bar import TabBar
+        from bagley.tui.panels.hosts import HostsPanel
+        from bagley.tui.panels.chat import ChatPanel
+        from bagley.tui.panels.target import TargetPanel
+        from textual.containers import Horizontal
         yield Header(self.state)
         yield ModesBar(self.state)
-        from bagley.tui.widgets.tab_bar import TabBar
         yield TabBar(self.state)
+        with Horizontal(id="pane-row"):
+            yield HostsPanel(self.state)
+            yield ChatPanel(self.state)
+            yield TargetPanel(self.state)
+
+    def action_focus(self, selector: str) -> None:
+        try:
+            widget = self.query_one(selector)
+        except Exception:
+            return
+        widget.focus()
 
     def action_disconnect(self) -> None:
         self.exit()
