@@ -23,7 +23,24 @@ from bagley.persona import DEFAULT_SYSTEM
 from bagley.tui.modes import by_name
 from bagley.tui.modes.persona import mode_system_suffix
 from bagley.tui.modes.policy import apply_mode_to_loop
+from bagley.tui.services.memory_promoter import MemoryPromoter
+from bagley.tui.services.alerts import bus as _alert_bus, Alert, Severity
 from bagley.tui.state import AppState
+
+
+def _promoter_event_to_alert(kind: str, detail: str) -> "Alert":
+    """Map a MemoryPromoter event kind to an Alert with correct severity and title."""
+    _MAP: dict[str, tuple[Severity, str, str]] = {
+        "new_host":        (Severity.INFO, "◯ saved to memory",  "#hosts-panel"),
+        "new_port":        (Severity.INFO, "◯ saved to memory",  "#hosts-panel"),
+        "cve_match":       (Severity.CRIT, "CRITICAL FINDING",        "#hosts-panel"),
+        "new_cred":        (Severity.WARN, "NEW CRED",                "#target-panel"),
+        "exploit_attempt": (Severity.WARN, "EXPLOIT ATTEMPT",         "#chat-panel"),
+        "shell_obtained":  (Severity.CRIT, "SHELL OBTAINED",          "#chat-panel"),
+    }
+    sev, title, selector = _MAP.get(kind, (Severity.INFO, "◯ saved to memory", ""))
+    return Alert(severity=sev, title=title, body=detail, source="promoter",
+                 pane_selector=selector)
 
 
 # -- Stub engine (used when state.engine_label == "stub") --
@@ -127,6 +144,16 @@ class ChatPanel(Vertical):
         self._state = state
         self._loop = self._build_loop()
         self.can_focus = True
+        # Phase 3: MemoryPromoter + optional MemoryStore
+        self._promoter = MemoryPromoter()
+        self._store = None
+        try:
+            from bagley.memory.store import MemoryStore
+            from pathlib import Path
+            db_path = Path(".bagley") / "memory.db"
+            self._store = MemoryStore(db_path)
+        except Exception:
+            pass
 
     def _build_loop(self) -> ReActLoop:
         engine = _StubEngine()
@@ -193,26 +220,81 @@ class ChatPanel(Vertical):
         event.input.value = ""
         log = self.query_one("#chat-log", RichLog)
         log.write(f"[bold green]you>[/] {msg}")
+        if self._handle_slash_command(msg):
+            return
+        self._respond(msg)
+
+    def _respond(self, msg: str) -> None:
+        """Default engine dispatch. Monkeypatched in tests to simulate responses."""
+        log = self.query_one("#chat-log", RichLog)
         self._run_in_loop(msg, log)
+
+    def _handle_slash_command(self, text: str) -> bool:
+        """Return True if the text was a slash command (handled here)."""
+        cmd = text.strip().lower()
+        if cmd == "/memory" or cmd.startswith("/memory "):
+            self._show_memory_browse()
+            return True
+        return False
+
+    def _show_memory_browse(self) -> None:
+        log = self.query_one("#chat-log", RichLog)
+        log.write("[b cyan]◆ MEMORY BROWSE[/]")
+        if self._store is None:
+            log.write("[dim](no memory store active)[/]")
+            return
+        try:
+            for sev in ("critical", "high", "medium", "low"):
+                findings = self._store.list_findings_by_severity(sev)
+                if findings:
+                    log.write(f"[b]{sev.upper()}[/] ({len(findings)})")
+                    for f in findings[:5]:    # cap display at 5 per severity
+                        log.write(f"  · [{f['host']}] {f['summary']}")
+            total = len(self._store.list_findings())
+            if total == 0:
+                log.write("[dim](no findings in memory yet)[/]")
+        except Exception as e:
+            log.write(f"[red](memory error: {e})[/]")
 
     def _run_in_loop(self, msg: str, log: RichLog) -> None:
         steps = self._loop.run(msg, self._system_for_current_mode())
+        response_text_parts: list[str] = []
         for step in steps:
             if step.kind in {"assistant", "final"}:
                 log.write(f"[magenta]bagley>[/] {step.content}")
+                response_text_parts.append(step.content or "")
             elif step.kind == "tool":
                 rc = step.execution.returncode if step.execution else 0
                 color = "green" if rc == 0 else "yellow"
                 log.write(f"[{color}]tool>[/] {step.content}")
+                response_text_parts.append(step.content or "")
             elif step.kind == "blocked":
                 log.write(f"[red]blocked>[/] {step.content}")
         self._state.turn += 1
+        # Phase 3: auto-memory promotion hook
+        response_text = "\n".join(response_text_parts)
+        self._run_promoter(response_text)
         try:
             self.app.query_one("#header").refresh_content()
         except Exception:
             pass
         try:
             self.app.query_one("#statusline").refresh_content()
+        except Exception:
+            pass
+
+    def _run_promoter(self, response_text: str) -> None:
+        """Scan assistant response for auto-memory events and publish toasts."""
+        if self._store is None or not response_text.strip():
+            return
+        try:
+            tab = (self._state.tabs[self._state.active_tab]
+                   if self._state.tabs else None)
+            host = tab.id if (tab and tab.kind == "target") else None
+            events = self._promoter.scan(response_text, self._store,
+                                         current_host=host)
+            for kind, detail in events:
+                _alert_bus.publish(_promoter_event_to_alert(kind, detail))
         except Exception:
             pass
 
