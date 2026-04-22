@@ -186,6 +186,21 @@ class MemoryStore:
             q = self.con.execute("SELECT * FROM findings ORDER BY created_at DESC")
         return [dict(r) for r in q.fetchall()]
 
+    def list_findings_by_severity(self, severity: str) -> list[dict]:
+        """Return all findings matching *severity* (case-insensitive), newest first."""
+        rows = self.con.execute(
+            "SELECT * FROM findings WHERE LOWER(severity) = LOWER(?) ORDER BY created_at DESC",
+            (severity,),
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+    def recent_attempts(self, n: int = 20) -> list[dict]:
+        """Return the *n* most-recent attempt rows across all hosts, newest first."""
+        rows = self.con.execute(
+            "SELECT * FROM attempts ORDER BY ts DESC LIMIT ?", (n,)
+        ).fetchall()
+        return [dict(r) for r in rows]
+
     # ---- embeddings / RAG ----
     def add_vector(self, kind: str, ref_id: str, text: str, embedding: list[float]) -> int:
         blob = struct.pack(f"{len(embedding)}f", *embedding)
