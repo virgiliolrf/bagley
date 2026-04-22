@@ -53,6 +53,8 @@ class BagleyApp(App):
         Binding("ctrl+k", "open_palette", "Palette", show=True),
         # Alerts log
         Binding("ctrl+n", "open_alerts_log", "Alerts", show=True),
+        # Plan mode
+        Binding("alt+p", "toggle_plan", "Plan mode", show=False),
     ]
 
     def __init__(self, stub: bool = False, **kwargs) -> None:
@@ -297,7 +299,15 @@ class BagleyApp(App):
         pass   # Phase 6
 
     def action_toggle_plan_mode(self) -> None:
-        pass   # Phase 4
+        self.action_toggle_plan()
+
+    def action_toggle_plan(self) -> None:
+        """Toggle plan mode overlay in the active ChatPanel."""
+        try:
+            chat = self.query_one("ChatPanel")
+            chat.toggle_plan_mode()
+        except Exception:
+            self.notify("No chat panel active", severity="warning")
 
     def action_open_timeline(self) -> None:
         pass   # Phase 5

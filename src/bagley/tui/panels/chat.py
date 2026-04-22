@@ -23,6 +23,9 @@ from bagley.persona import DEFAULT_SYSTEM
 from bagley.tui.modes import by_name
 from bagley.tui.modes.persona import mode_system_suffix
 from bagley.tui.modes.policy import apply_mode_to_loop
+from bagley.tui.plan_mode.generator import PlanGenerator
+from bagley.tui.plan_mode.overlay import PlanOverlay
+from bagley.tui.plan_mode.persistence import save_plan
 from bagley.tui.services.memory_promoter import MemoryPromoter
 from bagley.tui.services.alerts import bus as _alert_bus, Alert, Severity
 from bagley.tui.state import AppState
@@ -138,6 +141,8 @@ class ChatPanel(Vertical):
     BINDINGS = [
         Binding("ctrl+i", "inspect_selection", "Inspect", show=False),
     ]
+
+    _plan_overlay: PlanOverlay | None = None
 
     def __init__(self, state: AppState, **kwargs) -> None:
         super().__init__(id="chat-panel", **kwargs)
@@ -322,3 +327,99 @@ class ChatPanel(Vertical):
                 pane.inspect(text.strip())
             except Exception:
                 pass
+
+    # -- Plan mode --
+
+    def _submit_to_loop(self, cmd: str) -> None:
+        """Submit a command text to the ReAct loop (used by plan mode, smart paste)."""
+        try:
+            log = self.query_one("#chat-log", RichLog)
+            log.write(f"[bold green]you>[/] {cmd}")
+            self._run_in_loop(cmd, log)
+        except Exception:
+            pass
+
+    def _post_system_message(self, text: str) -> None:
+        """Post a dimmed system-style message into the chat log."""
+        try:
+            log = self.query_one("#chat-log", RichLog)
+            log.write(f"[dim]{text}[/]")
+        except Exception:
+            pass
+
+    def toggle_plan_mode(self) -> None:
+        """Show plan overlay if hidden; remove it if already shown."""
+        if self._plan_overlay is not None:
+            try:
+                self._plan_overlay.remove()
+            except Exception:
+                pass
+            self._plan_overlay = None
+            self.styles.opacity = "1"
+            return
+
+        # Use last user message as goal, fallback to generic text
+        goal = "recon current target"
+        try:
+            if self._state.tabs:
+                tab = self._state.tabs[self._state.active_tab]
+                if getattr(tab, "chat", None):
+                    last_user = next(
+                        (m["content"] for m in reversed(tab.chat) if m.get("role") == "user"),
+                        goal,
+                    )
+                    goal = last_user
+        except Exception:
+            pass
+
+        # Use stub/real engine from app state or fall back to local stub
+        engine = getattr(self.app, "engine", None)
+        if engine is None:
+            engine = _StubEngine()
+
+        gen = PlanGenerator(engine=engine)
+        try:
+            tab_id = self._state.tabs[self._state.active_tab].id if self._state.tabs else "recon"
+            plan = gen.generate(goal=goal, tab_id=tab_id)
+        except ValueError as exc:
+            try:
+                self.app.notify(str(exc), severity="error")
+            except Exception:
+                pass
+            return
+
+        overlay = PlanOverlay(plan, id="plan-overlay")
+        self._plan_overlay = overlay
+        self.styles.opacity = "0.4"
+        self.mount(overlay)
+
+    def load_plan(self, plan) -> None:
+        """Mount a pre-built Plan as overlay (used by PlaybookRunner flow)."""
+        if self._plan_overlay is not None:
+            try:
+                self._plan_overlay.remove()
+            except Exception:
+                pass
+            self._plan_overlay = None
+        overlay = PlanOverlay(plan, id="plan-overlay")
+        self._plan_overlay = overlay
+        self.styles.opacity = "0.4"
+        self.mount(overlay)
+
+    def on_plan_overlay_approve_step(self, event: PlanOverlay.ApproveStep) -> None:
+        """Run the approved step's command by submitting it to the loop."""
+        self._submit_to_loop(event.cmd)
+
+    def on_plan_overlay_dismissed(self, event: PlanOverlay.Dismissed) -> None:
+        """Save plan and clean up overlay on Esc."""
+        if self._plan_overlay is not None:
+            try:
+                save_plan(self._plan_overlay.plan)
+            except Exception:
+                pass
+            try:
+                self._plan_overlay.remove()
+            except Exception:
+                pass
+            self._plan_overlay = None
+            self.styles.opacity = "1"
