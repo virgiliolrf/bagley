@@ -46,7 +46,7 @@ class BagleyApp(App):
         # Focus
         Binding("f2", "focus('#hosts-panel')",  "Hosts", show=True),
         Binding("f3", "focus('#chat-panel')",   "Chat",  show=True),
-        Binding("f4", "focus('#target-panel')", "Notes", show=True),
+        Binding("f4", "focus_notes", "Notes", show=True),
         # Inspector
         Binding("ctrl+i", "open_inspector", "Inspect", show=False),
         # Palette
@@ -197,6 +197,13 @@ class BagleyApp(App):
                 self.query_one(widget_id).refresh_content()
             except Exception:
                 pass
+
+    def action_focus_notes(self) -> None:
+        try:
+            from bagley.tui.panels.notes_editor import NotesEditor
+            self.query_one(NotesEditor).focus()
+        except Exception:
+            pass
 
     def action_open_inspector(self) -> None:
         """Open inspector with the current chat-input value as selection."""

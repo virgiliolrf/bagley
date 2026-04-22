@@ -22,13 +22,14 @@ class TargetPanel(Vertical):
 
     def compose(self):
         from bagley.tui.widgets.rings import ProgressRings
+        from bagley.tui.panels.notes_editor import NotesEditor
         yield Static("[b orange3]◆ TARGET[/]\n[dim](no target)[/]", id="target-info")
         yield Static("[b orange3]◆ KILL-CHAIN[/]", id="killchain-header")
         stage = (self._state.tabs[self._state.active_tab].killchain_stage
                  if self._state.tabs else 0)
         yield ProgressRings(stage=stage)
         yield Static("[b orange3]◆ CREDS[/]\n[dim](none yet)[/]", id="creds-section")
-        yield Static("[b orange3]◆ NOTES[/]\n[dim](empty)[/]", id="notes-section")
+        yield NotesEditor(self._state)
 
     def on_mount(self) -> None:
         self.refresh_content()
@@ -47,9 +48,6 @@ class TargetPanel(Vertical):
             f"{c.get('user','?')}:{c.get('secret','?')}" for c in tab.creds
         )
 
-        notes = "[b orange3]◆ NOTES[/]\n"
-        notes += tab.notes_md or "[dim](empty)[/]"
-
         try:
             self.query_one("#target-info").update(info)
         except Exception:
@@ -62,9 +60,5 @@ class TargetPanel(Vertical):
             pass
         try:
             self.query_one("#creds-section").update(creds)
-        except Exception:
-            pass
-        try:
-            self.query_one("#notes-section").update(notes)
         except Exception:
             pass
