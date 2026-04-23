@@ -62,11 +62,18 @@ class BagleyApp(App):
         Binding("ctrl+shift+t", "open_timeline",     "Timeline scrubber", show=True),
         Binding("ctrl+shift+z", "undo",              "Undo last ingest",  show=True),
         Binding("ctrl+b",       "background_shell",  "Background shell",  show=True),
+        # Phase 6: voice / payload builder / hot-swap engine
+        Binding("ctrl+v",       "toggle_voice",      "Toggle voice",       show=False),
+        Binding("alt+y",        "payload_builder",   "Payload builder",    show=False),
+        Binding("ctrl+shift+m", "engine_swap",       "Hot-swap engine",    show=False),
     ]
 
-    def __init__(self, stub: bool = False, **kwargs) -> None:
+    def __init__(self, stub: bool = False, bagley_dir=None, **kwargs) -> None:
         super().__init__(**kwargs)
         self.state = AppState(os_info=detect_os(), engine_label="stub" if stub else "local")
+        from bagley.tui.services.voice import VoiceService
+        self.voice = VoiceService()
+        self._bagley_dir = bagley_dir
 
     def query_one(self, selector, expect_type=None):
         """Query the default screen first; if not found, fall back to the
@@ -359,10 +366,66 @@ class BagleyApp(App):
         pass   # Phase 6
 
     def action_toggle_voice(self) -> None:
-        pass   # Phase 6
+        new_state = self.voice.cycle()
+        self.state.voice_state = new_state.value
+        try:
+            header = self.query_one("#header")
+            header.set_voice_state(new_state)
+        except Exception:
+            pass
+
+    def action_payload_builder(self) -> None:
+        from bagley.tui.widgets.payload_modal import PayloadModal
+
+        def _inject(payload) -> None:
+            if payload:
+                try:
+                    chat = self.query_one("#chat-input")
+                    chat.value = (chat.value or "") + str(payload)
+                except Exception:
+                    pass
+
+        self.push_screen(PayloadModal(inject_callback=_inject))
 
     def action_open_payload_builder(self) -> None:
-        pass   # Phase 6
+        self.action_payload_builder()
+
+    def action_engine_swap(self) -> None:
+        from bagley.tui.widgets.engine_swap_modal import EngineSwapModal
+
+        def _on_engine_selected(entry) -> None:
+            if entry is None:
+                return
+            self.state.engine_label = entry.label
+            # Tag transition in active tab chat history.
+            try:
+                active = self.state.tabs[self.state.active_tab]
+                active.chat.append({
+                    "role": "system",
+                    "content": f"[engine={entry.label}]",
+                })
+            except Exception:
+                pass
+            # Notify footer/statusline to refresh.
+            try:
+                self.query_one("#statusline").refresh_content()
+            except Exception:
+                pass
+            try:
+                self.notify(
+                    f"Engine switched to {entry.label}",
+                    severity="information",
+                )
+            except Exception:
+                pass
+
+        self.push_screen(EngineSwapModal(on_select=_on_engine_selected))
+
+    def on_unmount(self) -> None:
+        try:
+            self.voice.stop()
+        except Exception:
+            pass
 
     def action_toggle_plan_mode(self) -> None:
         self.action_toggle_plan()
