@@ -112,6 +112,24 @@ class BagleyApp(App):
             self._nudge_engine = NudgeEngine(state=self.state, store=store)
             self.set_interval(30, self._nudge_engine.tick)
 
+        # Phase 6: first-launch tour.
+        try:
+            from bagley.tui.services.tour import TourService
+            from bagley.tui.widgets.tour_overlay import TourOverlay
+            from pathlib import Path as _Path
+
+            tour_dir = self._bagley_dir if self._bagley_dir else _Path(".bagley")
+            svc = TourService(bagley_dir=tour_dir)
+            if not svc.is_done():
+                def _mark_done():
+                    try:
+                        svc.mark_done()
+                    except Exception:
+                        pass
+                self.mount(TourOverlay(on_done=_mark_done))
+        except Exception:
+            pass
+
     def compose(self) -> ComposeResult:
         from bagley.tui.widgets.header import Header
         from bagley.tui.widgets.modes_bar import ModesBar
