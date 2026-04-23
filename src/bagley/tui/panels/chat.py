@@ -33,6 +33,7 @@ from bagley.tui.plan_mode.overlay import PlanOverlay
 from bagley.tui.plan_mode.persistence import save_plan
 from bagley.tui.services.memory_promoter import MemoryPromoter
 from bagley.tui.services.alerts import bus as _alert_bus, Alert, Severity
+from bagley.tui.services.reporter import Reporter, ReportConfig
 from bagley.tui.state import AppState
 
 
@@ -213,6 +214,52 @@ class ChatPanel(Vertical):
         log.write(f"[bold green]you>[/] {cmd}")
         self._run_in_loop(cmd, log)
 
+    def post_assistant_message(self, text: str) -> None:
+        """Append an assistant message to the chat log and speak it if voice is active."""
+        try:
+            log = self.query_one("#chat-log", RichLog)
+            log.write(f"[magenta]bagley>[/] {text}")
+        except Exception:
+            pass
+        # TTS hook: speak assistant messages (not tool output).
+        try:
+            self.app.voice.speak(text, role="assistant")
+        except AttributeError:
+            pass   # voice not wired in test environments without BagleyApp
+        except Exception:
+            pass
+
+    def _handle_report_mode(self, prompt: str) -> None:
+        """In REPORT mode: compile notes + memory into a markdown report."""
+        import datetime
+        from pathlib import Path
+
+        notes = {
+            tab.id: tab.notes_md
+            for tab in self._state.tabs
+        }
+        db_path = Path("memory/memory.db")  # default; real engagement may override
+        output_dir = Path("reports")
+        engagement = datetime.date.today().isoformat() + "-engagement"
+
+        cfg = ReportConfig(
+            db_path=db_path,
+            notes=notes,
+            output_dir=output_dir,
+            engagement=engagement,
+            generate_pdf="pdf" in prompt.lower() or "--pdf" in prompt.lower(),
+        )
+        reporter = Reporter(cfg)
+        try:
+            md = reporter.compile()
+            saved = reporter.save()
+            self._post_system_message(
+                f"[b]Report compiled[/b] -> `{saved}`\n\n"
+                + md[:500] + ("..." if len(md) > 500 else "")
+            )
+        except Exception as exc:
+            self._post_system_message(f"[red]Report error:[/red] {exc}")
+
     # -- Input handling --
 
     def on_key(self, event) -> None:
@@ -272,6 +319,10 @@ class ChatPanel(Vertical):
                 self._state.tabs[self._state.active_tab].cmd_history.append(msg)
         except Exception:
             pass
+        # Phase 6: REPORT mode intercept - compile report instead of executing tools.
+        if self._state.mode == "REPORT":
+            self._handle_report_mode(msg)
+            return
         self._respond(msg)
 
     def _respond(self, msg: str) -> None:
