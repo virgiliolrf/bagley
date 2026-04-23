@@ -57,6 +57,11 @@ class BagleyApp(App):
         Binding("alt+p", "toggle_plan", "Plan mode", show=False),
         # Smart paste
         Binding("ctrl+shift+v", "smart_paste", "Smart paste", show=False),
+        # Phase 5: graph / timeline / undo / background shell
+        Binding("f7",           "toggle_graph",      "Graph view",        show=True),
+        Binding("ctrl+shift+t", "open_timeline",     "Timeline scrubber", show=True),
+        Binding("ctrl+shift+z", "undo",              "Undo last ingest",  show=True),
+        Binding("ctrl+b",       "background_shell",  "Background shell",  show=True),
     ]
 
     def __init__(self, stub: bool = False, **kwargs) -> None:
@@ -390,17 +395,71 @@ class BagleyApp(App):
             except Exception:
                 pass
 
-    def action_open_timeline(self) -> None:
-        pass   # Phase 5
-
     def action_toggle_graph(self) -> None:
-        pass   # Phase 5
+        """F7: toggle GraphPane full-screen."""
+        try:
+            pane = self.query_one("GraphPane")
+            pane.display = not pane.display
+        except Exception:
+            pass  # GraphPane not yet mounted (no hosts discovered)
+
+    def action_open_timeline(self) -> None:
+        """Ctrl+Shift+T: show/hide the timeline scrubber widget."""
+        try:
+            tl = self.query_one("Timeline")
+            tl.display = not tl.display
+            if tl.display:
+                tl.focus()
+        except Exception:
+            pass
+
+    def action_undo(self) -> None:
+        """Ctrl+Shift+Z: undo the last finding or ingest for the active tab."""
+        active = self._get_active_tab_history()
+        if active is None:
+            try:
+                self.notify("Nothing to undo.", severity="information")
+            except Exception:
+                pass
+            return
+        from bagley.tui.services.undo import UndoStack
+        record = UndoStack(history=active).undo()
+        if record is None:
+            try:
+                self.notify("Nothing to undo.", severity="information")
+            except Exception:
+                pass
+        else:
+            try:
+                self.notify(
+                    f"Undone: [{record.event.kind.name}] {record.event.label}",
+                    severity="warning",
+                )
+            except Exception:
+                pass
+            try:
+                self.query_one("Timeline").reload()
+            except Exception:
+                pass
 
     def action_background_shell(self) -> None:
-        pass   # Phase 5
+        """Ctrl+B: background the currently focused ShellPane."""
+        try:
+            pane = self.query_one("ShellPane:focus")
+            pane.action_background()
+        except Exception:
+            pass
+
+    def _get_active_tab_history(self):
+        """Return the EngagementHistory for the active tab, or None."""
+        try:
+            return self.state.active_tab_history
+        except AttributeError:
+            return None
 
     def action_undo_finding(self) -> None:
-        pass   # Phase 3
+        """Legacy alias for action_undo."""
+        self.action_undo()
 
     def action_set_scope(self) -> None:
         pass   # Phase 3
