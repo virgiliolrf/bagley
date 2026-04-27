@@ -21,3 +21,6 @@ build/
 .claude/
 *.gguf
 data/*.jsonl
+tools/llama-bin/
+llama.cpp/
+bagley-v10-merged/

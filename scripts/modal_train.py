@@ -427,6 +427,21 @@ def export_v9(quant: str = "Q4_K_M"):
 
 
 @app.local_entrypoint()
+def export_v10(quant: str = "Q4_K_M"):
+    """Merge adapter v10 + base, converte GGUF, quantiza, baixa pra local."""
+    print(f"[local] launching merge_and_export on H100 (quant={quant})")
+    info = merge_and_export.remote("bagley-v10-modal", quant)
+    print(f"[local] export done: {info}")
+
+    gguf_name = f"bagley-v10-modal-{quant}.gguf"
+    out_path = LOCAL_ROOT / "runs" / gguf_name
+    print(f"[local] downloading {gguf_name} ({info['size_bytes']/1024/1024:.0f} MB)")
+    data = download_gguf.remote(gguf_name)
+    out_path.write_bytes(data)
+    print(f"[local] GGUF ready: {out_path}")
+
+
+@app.local_entrypoint()
 def pull_v10():
     """Baixa adapter v10 do Modal Volume após train concluir na cloud."""
     print(f"[local] downloading adapter bagley-v10-modal")

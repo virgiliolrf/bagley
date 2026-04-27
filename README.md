@@ -4,7 +4,12 @@ Assistente pessoal de cibersegurança com persona sarcástica britânica. Inspir
 
 Projeto pessoal. Sem garantia, sem suporte. Use por sua conta e risco.
 
-**Modelo treinado disponível no Hugging Face: [virgiliolrf2/bagley-v10](https://huggingface.co/virgiliolrf2/bagley-v10)** (LoRA adapter, 161 MB). Ver seção [Modelo](#modelo-usar-pronto-ou-treinar-do-zero) abaixo.
+**Modelo treinado no Hugging Face: [virgiliolrf2/bagley-v10](https://huggingface.co/virgiliolrf2/bagley-v10)**
+
+- LoRA adapter (161 MB) para uso direto via `peft`
+- GGUF Q4_K_M (4.6 GB) pra Ollama plug-and-play
+
+Ver seção [Modelo](#modelo-usar-pronto-ou-treinar-do-zero) abaixo.
 
 [![Python](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
@@ -51,9 +56,41 @@ Toda execução vai pra `~/.bagley/audit.log` com timestamp.
 
 ## Modelo: usar pronto ou treinar do zero
 
-### A) LoRA adapter direto do Hugging Face (161 MB)
+### A) GGUF pronto pro Ollama (4.6 GB, plug-and-play)
 
-Mais rápido. Carrega o base `Foundation-Sec-8B` + adapter v10 via `peft`:
+```bash
+huggingface-cli download virgiliolrf2/bagley-v10 bagley-v10-Q4_K_M.gguf --local-dir ~/bagley
+
+cd ~/bagley
+cat > Modelfile <<'EOF'
+FROM ./bagley-v10-Q4_K_M.gguf
+
+SYSTEM """You are Bagley. Sarcastic British AI assisting authorized pentests on TryHackMe. Tool-using agent with Hermes JSON tool_calls."""
+
+PARAMETER temperature 0.7
+PARAMETER top_p 0.9
+PARAMETER num_ctx 4096
+PARAMETER stop "<|im_end|>"
+PARAMETER stop "<|im_start|>"
+
+TEMPLATE """{{ if .System }}<|im_start|>system
+{{ .System }}<|im_end|>
+{{ end }}{{ range .Messages }}<|im_start|>{{ .Role }}
+{{ .Content }}<|im_end|>
+{{ end }}<|im_start|>assistant
+"""
+EOF
+
+ollama create bagley -f Modelfile
+ollama run bagley
+> escaneie 10.10.10.5
+```
+
+Throughput Q4_K_M: M1 ~22 tok/s, M2 ~28 tok/s, M3 Max ~55 tok/s, RTX 4090 ~80 tok/s.
+
+### B) LoRA adapter direto via peft (161 MB)
+
+Carrega base + adapter v10 separados:
 
 ```python
 from peft import PeftModel
@@ -69,36 +106,7 @@ model = PeftModel.from_pretrained(base, "virgiliolrf2/bagley-v10")
 tokenizer = AutoTokenizer.from_pretrained("virgiliolrf2/bagley-v10")
 ```
 
-Pra rodar no Ollama (Metal/CUDA, ~30 tok/s), precisa fazer merge + GGUF:
-
-```bash
-# 1. baixa adapter do HF + merge no base
-huggingface-cli download virgiliolrf2/bagley-v10 --local-dir ./bagley-v10-adapter
-huggingface-cli download fdtn-ai/Foundation-Sec-8B --local-dir ./foundation-sec-8b
-
-python -c "
-from peft import PeftModel
-from transformers import AutoModelForCausalLM, AutoTokenizer
-import torch
-base = AutoModelForCausalLM.from_pretrained('./foundation-sec-8b', torch_dtype=torch.bfloat16, device_map='auto')
-m = PeftModel.from_pretrained(base, './bagley-v10-adapter')
-merged = m.merge_and_unload()
-merged.save_pretrained('./bagley-v10-merged', safe_serialization=True)
-AutoTokenizer.from_pretrained('./bagley-v10-adapter').save_pretrained('./bagley-v10-merged')
-"
-
-# 2. converte HF -> GGUF f16 -> quantiza Q4_K_M (~5 GB)
-git clone https://github.com/ggerganov/llama.cpp && cd llama.cpp && make -j
-python convert_hf_to_gguf.py ../bagley-v10-merged --outfile ../bagley-v10-f16.gguf --outtype f16
-./llama-quantize ../bagley-v10-f16.gguf ../bagley-v10-Q4_K_M.gguf Q4_K_M
-
-# 3. registra no Ollama (Modelfile em DEPLOY.md)
-ollama create bagley -f Modelfile
-ollama run bagley
-> escaneie 10.10.10.5
-```
-
-### B) Treinar do zero
+### C) Treinar do zero
 
 Roda em ~1h num H100 via Modal (custa uns $3). Tem que ter conta Modal autenticada (`modal token new`).
 
